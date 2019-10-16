@@ -17,6 +17,8 @@ baseDict = {
 }
 
 def pileupBaseCounter(resultStr):
+    # Count base calls numbers from a pileup result string
+    
     counts = np.zeros(4, dtype=np.int32)
     i = 0
     while i < len(resultStr):
@@ -39,17 +41,23 @@ def pileupBaseCounter(resultStr):
     return counts
 
 def pileupParser(filePath):
+    # Read pileup file and add a column ('Calls') that sumerize the number of each base
+    
     with open(filePath) as f:
         file = pd.read_csv(f, sep='\t', names=['Chr', 'Pos', 'RefBase', 'Depth', 'Result', 'Qual'], index_col=[0, 1])
     file['Calls'] = file['Result'].apply(pileupBaseCounter)
     return file
 
 def callArr(pileupPath, Chr):
+    # Read pileup file and generate the base-calls of a certain chromosome to a numpy array
+    
     pileup = pileupParser(pileupPath)
     callArr = np.array(list(pileup.loc[Chr]['Calls']))
     return callArr
 
 def getConvArr(callArr, ref):
+    # Calculate the over all sequencing convertion error rate
+    
     conversionArr = np.zeros((4, 4))
     for i in range(len(ref)):
 #         print(callArr[i])
@@ -58,6 +66,8 @@ def getConvArr(callArr, ref):
     return conversionArr
 
 def getExpFr(Arr, convArr):
+    # Get the expexted seq-calls from the reference call array and a conversion matrix
+    
     psudoFr = Arr + 1
     convFr = psudoFr @ convArr
     normFr = (convFr.T / convFr.sum(1)).T
@@ -70,6 +80,10 @@ class MutDetector():
     baseDict = baseDict
 
     def __init__(self, genomeRef, parental, knownSeq=None):
+        # genomeRef: the referance fasta file
+        # parental: the pileup file of the parental line
+        # knownSeq: sequencing results of a know sequence, that's for the sequencing error rate.
+        
         if knownSeq is None:
             knownSeq = parental
 

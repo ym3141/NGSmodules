@@ -1,3 +1,5 @@
 __pycache__/
 TestData/
 *_temp/
+
+*.pyc

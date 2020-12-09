@@ -16,6 +16,13 @@ baseDict = {
     'G' : 3
 }
 
+baseDict_rev = {
+    0 : 'A',
+    1 : 'T',
+    2 : 'C',
+    3 : 'G'
+}
+
 def pileupBaseCounter(resultStr):
     # Count base calls numbers from a pileup result string
     
@@ -46,22 +53,31 @@ def pileupParser(filePath):
     with open(filePath) as f:
         file = pd.read_csv(f, sep='\t', names=['Chr', 'Pos', 'RefBase', 'Depth', 'Result', 'Qual'], index_col=[0, 1])
     file['Calls'] = file['Result'].apply(pileupBaseCounter)
+
     return file
 
-def callArr(pileupPath, Chr):
+def getCallArr(pileupPath, Chr, refLen):
     # Read pileup file and generate the base-calls of a certain chromosome to a numpy array
     
     pileup = pileupParser(pileupPath)
-    callArr = np.array(list(pileup.loc[Chr]['Calls']))
+    callArr = np.zeros([refLen, 4])
+
+    callDict = dict(pileup.loc[Chr]['Calls'])
+    for pos in callDict:
+        callArr[pos-1] = callDict[pos] 
+
     return callArr
 
 def getConvArr(callArr, ref):
     # Calculate the over all sequencing convertion error rate
-    
+    # print(callArr.shape)
+    # print(len(ref))
     conversionArr = np.zeros((4, 4))
+    
     for i in range(len(ref)):
 #         print(callArr[i])
         conversionArr[baseDict[ref[i]]] += callArr[i]
+
     conversionArr = conversionArr / conversionArr.sum(1)
     return conversionArr
 
@@ -93,20 +109,25 @@ class MutDetector():
         self.chrID = gRef_fa[0].id
         self.refSeq = gRef_fa[0].upper()
         
-        self.knownSeqArr = callArr(knownSeq, gRef_fa[0].id)
-        self.parentalArr = callArr(parental, gRef_fa[0].id)
+        self.knownSeqArr = getCallArr(knownSeq, gRef_fa[0].id, len(self.refSeq))
+        self.parentalArr = getCallArr(parental, gRef_fa[0].id, len(self.refSeq))
 
         self.convArr = getConvArr(self.knownSeqArr, self.refSeq)
 
         self.expFr = getExpFr(self.parentalArr, self.convArr)
 
+        print('Building of mutation detector completed. \
+            \n{0} is used as reference \
+            \n{1} is used for estimating sequencing error \
+            \n{2} is used as the non-mutated strain'.format(genomeRef, knownSeq, parental))
+
     def callSNP(self, pileupPath):
-        calls =  callArr(pileupPath, self.chrID)
+        calls =  getCallArr(pileupPath, self.chrID, len(self.refSeq))
         expCalls =  (self.expFr.T * calls.sum(1)).T
         
-        pValues = chisquare(calls.T, expCalls.T).pvalue
+        chisquares = chisquare(calls.T, expCalls.T)
         
-        return calls, expCalls, pValues
+        return calls, expCalls, chisquares.pvalue
 
     def callSgnfctSNP(self, filePath, pThreshold=0.005, refRange=None):
         # Bonferroni correction included for the p-values
@@ -123,10 +144,14 @@ class MutDetector():
         outputList = [calls, [], []]
 
         print(basename(filePath)[0:-7], '{0} hits found'.format(sigs.sum()))
-        for idx in sortedIdx[sigs]:
-            print(idx, '{:.2e}'.format(pValues[idx]), calls[idx], ['{:.1f}'.format(i) for i in expCalls[idx]], sep='\t')
-            outputList[1].append(idx)
-            outputList[2].append(pValues[idx])
+        print('Printing in format: Index(zero based) \t Bonferroni p-value \t Call counts (A-T-C-G) \t Expected counts (A-T-C-G)')
+
+        with np.printoptions(precision=1, suppress=True):
+            for idx in sortedIdx[sigs]:
+                print(idx, '{:.2e}'.format(pValues[idx]), calls[idx], expCalls[idx], sep='\t')
+                outputList[1].append(idx)
+                outputList[2].append(pValues[idx])
+        print()
 
         return basename(filePath)[0:-7], outputList
 

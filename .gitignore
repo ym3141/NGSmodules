@@ -3,3 +3,4 @@ TestData/
 *_temp/
 
 *.pyc
+.vscode/
